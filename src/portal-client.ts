@@ -5,9 +5,9 @@ import type { Logger } from "pino";
 /**
  * Thin HTTP client for portal.stimba.sk endpoints used by the agent:
  *
- *   POST /api/agent/heartbeat   { ts, deviceId, robotMode, safety, … }
- *   POST /api/metrics/ingest    { events: MetricEvent[] }
- *   POST /api/agent/audit       { events: AuditEvent[] }
+ *   POST /api/agent/heartbeat        { ts, deviceId, robotMode, safety, … }
+ *   POST /api/agent/metrics/ingest   { events: MetricEvent[] }
+ *   POST /api/agent/audit            { events: AuditEvent[] }
  *   POST /api/agent/log-upload  multipart bundle (Sprint 7 §2 "Download logs")
  *   GET  /api/agent/policy      → { allowedTiers, hitlRequiredTiers, killSwitch }
  *   GET  /api/agent/tickets/:id → HITL approval ticket validation
@@ -100,7 +100,7 @@ export class PortalClient {
   }
 
   pushMetrics(events: MetricEvent[], idemKey: string): Promise<{ accepted: number }> {
-    return this.request("/api/metrics/ingest", {
+    return this.request("/api/agent/metrics/ingest", {
       method: "POST",
       body: JSON.stringify({ events }),
       idempotencyKey: idemKey,

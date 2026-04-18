@@ -17,7 +17,7 @@ Sprint 6 Week 1–2, and the contract the agent already targets in code.
 | Base URL (prod) | `https://portal.stimba.sk` |
 | Base URL (dev) | configurable via `STIMBA_PORTAL_URL` on the agent |
 | Transport | HTTPS (TLS 1.2+). Agent pins leaf cert SHA-256 via `STIMBA_PORTAL_TLS_PIN` |
-| Auth | `Authorization: Bearer <device-scoped JWT>` |
+| Auth | `Authorization: Bearer <device-scoped opaque token>` — today `ptk_<hex>` stored hashed in `device_credentials`. JWT refactor planned Sprint 6 W3 pairing flow |
 | Device id | `X-Stimba-Device-Id: <deviceId>` on every request |
 | User agent | `stimba-ur-control-agent/<semver>` |
 | Content type | `application/json; charset=utf-8` for all JSON endpoints |
@@ -25,12 +25,18 @@ Sprint 6 Week 1–2, and the contract the agent already targets in code.
 
 ### 1.1 Bearer token lifecycle
 
-- Issued at URCap install/pair (out of scope here — lives in Sprint 7 pairing
-  doc).
-- Stored in URCapX `secureStorage.stimbaPortalToken`, surfaced to the
-  container as `STIMBA_PORTAL_TOKEN` env var via `valueFrom.secureStorage`.
-- Short-lived (≤ 24 h). Refresh happens on `401` via a re-pair flow; the agent
-  does NOT hold a refresh token in persistent storage.
+- Format is **opaque to the agent** — today `ptk_<lower-hex>`, issued once at
+  URCap install/pair and stored in URCapX `secureStorage.stimbaPortalToken`,
+  surfaced to the container as `STIMBA_PORTAL_TOKEN` env var via
+  `valueFrom.secureStorage`.
+- Portal verifies by `sha256(token)` lookup in the `device_credentials` table.
+- **Today**: long-lived, revoked server-side by setting
+  `device_credentials.revoked_at`. Agent treats `401` as fatal (rotate via
+  re-pair).
+- **Planned Sprint 6 W3**: migrate to short-lived JWT (≤ 24 h) with a separate
+  refresh path. Wire format stays `Authorization: Bearer <token>`, so the
+  agent won't need code changes beyond token renewal logic. Contract version
+  will bump in §5 when this lands.
 
 ### 1.2 Idempotency
 
@@ -103,7 +109,12 @@ still fires).
 
 ---
 
-### 2.2 `POST /api/metrics/ingest`
+### 2.2 `POST /api/agent/metrics/ingest`
+
+> Namespaced under `/api/agent/*` to keep the URCapX agent contract fully
+> separate from the legacy `/api/metrics/ingest` endpoint used by the PS5
+> URCap v3 agent (different auth + payload shape, both remain live during
+> parallel rollout).
 
 High-cadence telemetry batch. Default batch size 500, flush every 10 s (agent
 side config: `STIMBA_METRICS_FLUSH_INTERVAL_SEC`, `batchSize` in
