@@ -54,11 +54,14 @@ export class BatchPusher<T> {
           },
           "batch flush failed",
         );
-      } finally {
-        if (this.stopping) return;
-        const delay = this.computeDelayMs();
-        this.timer = setTimeout(tick, delay);
       }
+      // Reschedule after try/catch completes — not in `finally` because a
+      // `return` inside finally is ESLint no-unsafe-finally (and would mask
+      // a thrown value). The catch above swallows errors, so normal control
+      // flow always reaches here.
+      if (this.stopping) return;
+      const delay = this.computeDelayMs();
+      this.timer = setTimeout(tick, delay);
     };
     this.timer = setTimeout(tick, this.opts.intervalSec * 1000);
   }
