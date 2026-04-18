@@ -1,0 +1,38 @@
+{
+  "name": "@stimba/ur-control-agent",
+  "version": "1.0.0-alpha.1",
+  "private": true,
+  "description": "STIMBA agent container for Universal Robots PolyscopeX (and PS5 parity). Runs inside URCapX container artifact, exposes local admin HTTP, pushes metrics + audit to portal.stimba.sk.",
+  "main": "dist/index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0 <21"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node --enable-source-maps dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "tsx --test 'test/**/*.test.ts'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint 'src/**/*.ts'",
+    "docker:build": "docker build -t ghcr.io/bielikandrej/ur-control-agent:$(node -p \"require('./package.json').version\") -t ghcr.io/bielikandrej/ur-control-agent:latest .",
+    "docker:push": "docker push ghcr.io/bielikandrej/ur-control-agent:$(node -p \"require('./package.json').version\") && docker push ghcr.io/bielikandrej/ur-control-agent:latest"
+  },
+  "dependencies": {
+    "fastify": "^4.28.1",
+    "@fastify/helmet": "^11.1.1",
+    "@fastify/rate-limit": "^9.1.0",
+    "pino": "^9.3.2",
+    "pino-pretty": "^11.2.1",
+    "undici": "^6.19.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/parser": "^7.16.0",
+    "@typescript-eslint/eslint-plugin": "^7.16.0"
+  }
+}

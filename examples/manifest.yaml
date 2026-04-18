@@ -1,0 +1,148 @@
+# Example URCapX manifest.yaml showing container artifact layout for
+# stimba-ur-control-agent + cloudflared tunnel daemon.
+#
+# Reference: UR SDK 0.18+ BackendContributionConnectivity
+#   https://plus.universal-robots.com/services/polyscope-x/sdk/urcapx-manifest/
+#
+# Put this file at the root of the URCapX repo (next to package.json).
+
+schemaVersion: 1
+
+metadata:
+  name: stimba-remote-access
+  displayName: STIMBA Remote Access
+  version: 1.0.0
+  vendor: STIMBA, s. r. o.
+  vendorEmail: bielik@stimba.sk
+  homepage: https://portal.stimba.sk
+  description: >
+    Secure web access + monitoring for UR robots managed by portal.stimba.sk.
+    Replaces IXON iBox / VNC with a zero-setup Cloudflare Tunnel and pushes
+    metrics + audit to the STIMBA portal.
+  license: Proprietary
+
+# -----------------------------------------------------------------------------
+# URCap-wide secure storage — prompts operator at install for these values.
+# Values can also be pre-populated by the pairing flow (portal POSTs them to
+# the URCap install API with a 6-digit code).
+# -----------------------------------------------------------------------------
+secureStorage:
+  - key: stimbaPortalToken
+    displayName: STIMBA portal device token
+    description: Device-scoped JWT issued during pairing
+  - key: stimbaAgentListenToken
+    displayName: Agent internal auth token
+    description: Shared secret between URCap UI and local agent
+    generated: true        # URCap runtime auto-generates on first install
+  - key: cloudflareTunnelToken
+    displayName: Cloudflare Tunnel token
+    description: >
+      Long-lived token from `cloudflared tunnel token <tunnel-id>` created
+      by STIMBA portal during pairing flow
+
+# -----------------------------------------------------------------------------
+# Frontend contribution — UI panel rendered in PolyscopeX Installation tab.
+# Reads state from the local agent HTTP (via URCap backend proxy).
+# -----------------------------------------------------------------------------
+frontend:
+  installationNode:
+    entry: dist/ui/installation.html
+    title: STIMBA Remote Access
+    icon: dist/ui/icon.svg
+
+# -----------------------------------------------------------------------------
+# Container artifacts — THIS is the pivot from Sprint 6 research (2026-04-18):
+# instead of bundling cloudflared binary + exec()'ing it from TypeScript, we
+# declare both daemons as containers and let PolyscopeX runtime manage them.
+# -----------------------------------------------------------------------------
+artifacts:
+  containers:
+
+    # -------------------------------------------------------------------------
+    # STIMBA agent — metrics, audit, heartbeat, Dashboard proxy
+    # -------------------------------------------------------------------------
+    - name: stimba-ur-control-agent
+      image: ghcr.io/bielikandrej/ur-control-agent:1.0.0-alpha.1
+      restart: always
+      readOnly: true             # rootfs immutable; state goes to volume mount
+      capDrop: [ALL]
+      user: "10001:10001"
+      services:
+        - urcontrol-primary      # grants Dashboard :29999 + RTDE :30004
+      ingress:
+        - name: agent-internal
+          port: 8787
+          protocol: tcp
+          scope: localhost       # only accessible from within URCap (UI panel)
+      volumeMounts:
+        - name: agent-state
+          path: /var/stimba/agent
+          readWrite: true
+      environment:
+        - name: STIMBA_DEVICE_ID
+          valueFrom:
+            device:
+              field: id          # runtime populates with URCap-assigned UUID
+        - name: STIMBA_DEVICE_SERIAL
+          valueFrom:
+            device:
+              field: serialNumber
+        - name: STIMBA_POLYSCOPE_VARIANT
+          value: psx
+        - name: STIMBA_URCAP_VERSION
+          valueFrom:
+            urcap:
+              field: version
+        - name: STIMBA_PORTAL_URL
+          value: https://portal.stimba.sk
+        - name: STIMBA_PORTAL_TOKEN
+          valueFrom:
+            secureStorage:
+              key: stimbaPortalToken
+        - name: STIMBA_AGENT_LISTEN_TOKEN
+          valueFrom:
+            secureStorage:
+              key: stimbaAgentListenToken
+        - name: STIMBA_AGENT_LISTEN_HOST
+          value: 0.0.0.0          # bind in-container so ingress works
+        - name: STIMBA_AGENT_LISTEN_PORT
+          value: "8787"
+        - name: STIMBA_URCONTROL_HOST
+          value: urcontrol-primary
+        - name: LOG_LEVEL
+          value: info
+
+    # -------------------------------------------------------------------------
+    # Cloudflare Tunnel — exposes the PolyscopeX web UI (and agent internal
+    # endpoints under /agent/*) to portal.stimba.sk over a managed tunnel.
+    # -------------------------------------------------------------------------
+    - name: cloudflared
+      image: cloudflare/cloudflared:2026.4.0
+      restart: always
+      readOnly: true
+      capDrop: [ALL]
+      services: []                # no UR services — outbound-only egress
+      environment:
+        - name: TUNNEL_TOKEN
+          valueFrom:
+            secureStorage:
+              key: cloudflareTunnelToken
+        - name: TUNNEL_METRICS
+          value: 0.0.0.0:2000     # optional local metrics scrape
+        - name: NO_AUTOUPDATE
+          value: "true"
+      # Cloudflared is fully configured by the portal at pairing time:
+      # `cloudflared tunnel route dns <tunnel-id> ui.device-<id>.portal.stimba.sk`
+      # — no CLI args needed here beyond `--token`.
+      command:
+        - tunnel
+        - --no-autoupdate
+        - run
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  - name: agent-state
+    sizeLimit: 64Mi
+    reclaimPolicy: retain          # keep queue state across URCap upgrades
