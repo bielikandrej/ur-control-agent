@@ -12,7 +12,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node --enable-source-maps dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test 'test/**/*.test.ts'",
+    "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint 'src/**/*.ts'",
     "docker:build": "docker build -t ghcr.io/bielikandrej/ur-control-agent:$(node -p \"require('./package.json').version\") -t ghcr.io/bielikandrej/ur-control-agent:latest .",
